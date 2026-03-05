@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Project Rio | main.py — v3.1 (Latency-Optimised)
+Project Rio | main.py — v4 ULTRA SMOOTH
 
-Architecture:
-  Thread 1 — CameraReader  : reads raw frames as fast as possible (in capture.py)
-  Thread 2 — AIProcessor   : runs YOLO+face on frames, never throttled
-  Thread 3 — FlaskDashboard: serves MJPEG stream + API independently
+Stream = camera speed always (30fps).
+AI     = runs as fast as CPU allows, completely independent.
+Overlay= last known boxes stamped onto every raw frame in <1ms.
 
-Key fix: FPSController no longer gates the main loop.
-It only controls EVIDENCE mode labelling for the dashboard.
-AI processes every frame it can — stream stays live and smooth.
+Thread layout:
+  CameraReader  (capture.py) — reads raw frames, stores in app_state.raw_frame
+  JPEGEncoder   (stream.py)  — raw_frame + overlay → JPEG bytes
+  MJPEGStream   (stream.py)  — sends pre-encoded bytes to browser
+  AIProcessor   (main.py)    — YOLO+pose+face, updates overlay commands
+  AlertDispatch (alert_manager.py) — clips + Telegram, never blocks AI
+  FlaskDashboard              — serves routes
 """
 import argparse, collections, sys, threading, time
 from pathlib import Path
@@ -25,43 +28,40 @@ from config.settings import (
 from app.core.analyzer              import ThreatAnalyzer
 from app.core.alert_manager         import AlertManager
 from app.core.fps_controller        import FPSController
+from app.core.overlay               import overlay
 from app.services.telegram_notifier import TelegramNotifier
-from app.services.ngrok_tunnel      import start_tunnel, stop_tunnel
-from app.core.capture               import FrameSource
-from app.core.hud                   import draw_hud
-from app.models.app_state           import app_state
-from app.models.threat              import ThreatLevel
-from app.api.server                 import create_app
+from app.services.ngrok_tunnel       import start_tunnel, stop_tunnel
+from app.core.capture                import FrameSource
+from app.core.hud                    import draw_hud
+from app.models.app_state            import app_state
+from app.models.threat               import ThreatLevel
+from app.api.server                  import create_app
 from utils.logger import setup_logging, get_logger
 
 setup_logging(LOG_FILE, LOG_LEVEL)
 logger = get_logger(__name__)
 
-BUFFER_SECONDS = 15   # frame buffer depth for RED 15s clips
+BUFFER_SECONDS = 15
 
 
 def run(source) -> None:
-    logger.info("Project Rio v3.1 starting | source=%s", source)
+    logger.info("Project Rio v4 (Ultra Smooth) | source=%s", source)
 
     if "YOUR_BOT_TOKEN" in TELEGRAM_BOT_TOKEN:
         logger.warning("Telegram not configured — add tokens to .env")
 
-    # ── Initialise layers ──────────────────────────────────
     notifier  = TelegramNotifier()
     analyzer  = ThreatAnalyzer()
     alert_mgr = AlertManager(notifier)
     fps_ctrl  = FPSController()
     frame_src = FrameSource(source)
 
-    frame_buf   = collections.deque(maxlen=FPS_EVIDENCE * BUFFER_SECONDS)
-    frame_count = 0
+    frame_buf = collections.deque(maxlen=FPS_EVIDENCE * BUFFER_SECONDS)
 
-    # ── ngrok ──────────────────────────────────────────────
     url = start_tunnel()
     if url:
         app_state.public_url = url
 
-    # ── Flask dashboard (Thread 3) ─────────────────────────
     flask_app = create_app(alert_mgr, frame_src)
     threading.Thread(
         target=lambda: flask_app.run(
@@ -70,18 +70,18 @@ def run(source) -> None:
         ),
         daemon=True, name="FlaskDashboard",
     ).start()
-    logger.info("Dashboard ready: http://localhost:%d", DASHBOARD_PORT)
+    logger.info("Dashboard: http://localhost:%d", DASHBOARD_PORT)
 
-    # ── AI queue — maxlen=1 means AI always gets the LATEST frame ──
-    # If AI is slow, old frames are silently dropped. Stream never waits.
+    # ── AI queue — depth 1, always freshest frame ─────────
     ai_queue = collections.deque(maxlen=1)
     ai_stop  = threading.Event()
+    frame_count = 0
 
     def ai_worker():
         """
-        Thread 2 — AI Processor.
-        Runs as fast as CPU allows. No sleep, no throttle.
-        Always grabs the freshest frame from ai_queue.
+        Runs as fast as CPU allows.
+        Updates overlay commands + app_state detections.
+        Never touches the stream — stream reads overlay independently.
         """
         while not ai_stop.is_set():
             if not ai_queue:
@@ -91,14 +91,32 @@ def run(source) -> None:
             frame = ai_queue[0]
 
             try:
-                annotated, detections = analyzer.analyze(frame)
+                _, detections = analyzer.analyze(frame)
             except Exception as e:
                 logger.error("AI error: %s", e)
                 continue
 
             fps_ctrl.update(detections)
 
-            # ── Threat alerts ──────────────────────────────
+            # Update overlay draw commands (< 1ms)
+            overlay.update(detections, {
+                "fps_mode":     fps_ctrl.mode,
+                "fps":          fps_ctrl.current_fps,
+                "cooldown":     alert_mgr.in_cooldown("HIGH"),
+                "cooldown_secs": alert_mgr.cooldown_remaining("HIGH"),
+            })
+
+            # Update dashboard state
+            app_state.update(
+                frame         = app_state.raw_frame,  # stream handles rendering
+                detections    = detections,
+                fps_mode      = fps_ctrl.mode,
+                fps           = fps_ctrl.current_fps,
+                cooldown      = alert_mgr.in_cooldown("HIGH"),
+                cooldown_secs = alert_mgr.cooldown_remaining("HIGH"),
+            )
+
+            # Alerts
             threats = sorted(
                 detections,
                 key=lambda d: _threat_priority(d.threat),
@@ -136,58 +154,34 @@ def run(source) -> None:
                     ):
                         app_state.increment_alerts()
 
-            # ── Push annotated frame to stream ─────────────
-            display = draw_hud(
-                annotated,
-                fps_ctrl.mode,
-                fps_ctrl.current_fps,
-                alert_mgr.in_cooldown("HIGH"),
-                frame_count,
-            )
-            app_state.update(
-                frame         = display,
-                detections    = detections,
-                fps_mode      = fps_ctrl.mode,
-                fps           = fps_ctrl.current_fps,
-                cooldown      = alert_mgr.in_cooldown("HIGH"),
-                cooldown_secs = alert_mgr.cooldown_remaining("HIGH"),
-            )
-
-    ai_thread = threading.Thread(
+    threading.Thread(
         target=ai_worker, daemon=True, name="AIProcessor"
-    )
-    ai_thread.start()
-    logger.info("AI processor thread started.")
+    ).start()
+    logger.info("AI processor started.")
 
-    # ── Main loop — feed frames into pipeline ──────────────
-    # No sleep. No FPS throttle. Read → buffer → push. That's it.
-    logger.info("Hub loop running.")
-
+    # ── Main loop — feed raw frames everywhere ────────────
+    logger.info("Streaming. Ctrl+C to stop.")
     try:
         while True:
             ret, frame = frame_src.read()
             if not ret:
                 time.sleep(0.005)
                 if not frame_src.is_running:
-                    logger.info("Video source ended.")
                     break
                 continue
 
             frame_count += 1
-
-            # Always buffer raw frame for clip recording
             frame_buf.append(frame.copy())
 
-            # Push to AI — maxlen=1 auto-drops stale frames
+            # ★ KEY: raw frame goes to stream IMMEDIATELY
+            # Stream reads this and stamps overlay — no AI wait
+            app_state.raw_frame = frame
+
+            # Also feed AI queue (depth 1 = always fresh, drops stale)
             ai_queue.append(frame)
 
-            # Push raw frame to stream immediately so browser
-            # always has something even before AI processes it
-            if app_state.latest_frame is None:
-                app_state.latest_frame = frame
-
     except KeyboardInterrupt:
-        logger.info("Interrupted.")
+        logger.info("Stopped by user.")
     finally:
         ai_stop.set()
         frame_src.release()
@@ -197,11 +191,8 @@ def run(source) -> None:
 
 def _threat_priority(t: ThreatLevel) -> int:
     return {
-        ThreatLevel.RED:    4,
-        ThreatLevel.HIGH:   3,
-        ThreatLevel.YELLOW: 2,
-        ThreatLevel.LOW:    1,
-        ThreatLevel.NONE:   0,
+        ThreatLevel.RED: 4, ThreatLevel.HIGH: 3,
+        ThreatLevel.YELLOW: 2, ThreatLevel.LOW: 1, ThreatLevel.NONE: 0,
     }.get(t, 0)
 
 
@@ -212,6 +203,6 @@ def _parse_source(raw):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Project Rio AI-DVR v3.1")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--source", default=None)
     run(_parse_source(parser.parse_args().source))

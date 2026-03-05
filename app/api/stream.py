@@ -1,98 +1,94 @@
 """
-app/api/stream.py
-MJPEG streamer with dedicated JPEG encoder thread.
+app/api/stream.py — ULTRA SMOOTH
 
-3 concerns fully separated:
-  AI thread    → writes raw annotated frame to app_state
-  Encoder thread → encodes JPEG in background, stores bytes
-  MJPEG generator → just sends pre-encoded bytes, zero CPU
+3 fully independent concerns:
+  1. Raw frame reader  — camera speed (30fps)
+  2. Overlay stamper   — stamps last AI boxes onto raw frame (<1ms)
+  3. JPEG encoder      — dedicated thread, pre-encodes, stream just sends bytes
+
+Stream latency = camera latency only. AI speed is irrelevant to smoothness.
 """
 import threading
 import time
 import cv2
 from app.models.app_state import app_state
+from app.core.overlay     import overlay
 
-STREAM_FPS    = 30       # target stream FPS to browser
-JPEG_QUALITY  = 70       # lower = faster encode + faster transfer
-_encoded_lock = threading.Lock()
-_encoded_buf  = None     # pre-encoded JPEG bytes
-_encoder_started = False
+STREAM_FPS   = 30
+JPEG_QUALITY = 65    # 65 is good balance — lower = faster transfer
+
+# Pre-encoded JPEG bytes — updated by encoder thread
+_buf_lock = threading.Lock()
+_buf      = None
+_enc_started = False
 
 
 def _encoder_thread():
-    """
-    Runs forever in background.
-    Encodes latest frame to JPEG as fast as possible.
-    Stream generator just reads the bytes — no encoding on hot path.
-    """
-    global _encoded_buf
-    last_frame_id = None
+    global _buf
+    last_id = None
 
     while True:
-        frame = app_state.latest_frame
+        frame = app_state.raw_frame   # raw frame, no AI wait
         if frame is None:
-            time.sleep(0.01)
+            time.sleep(0.008)
             continue
 
-        # Only re-encode if frame actually changed
-        frame_id = id(frame)
-        if frame_id == last_frame_id:
-            time.sleep(0.005)
+        fid = id(frame)
+        if fid == last_id:
+            time.sleep(0.004)
             continue
+        last_id = fid
 
-        last_frame_id = frame_id
+        # Stamp AI overlay onto raw frame (< 1ms)
+        rendered = overlay.render(frame)
 
-        # Resize to 720p max before encoding — big speed win
-        h, w = frame.shape[:2]
-        if w > 1280:
-            scale = 1280 / w
-            frame = cv2.resize(
-                frame,
-                (1280, int(h * scale)),
+        # Downscale to 960px wide max for faster browser transfer
+        h, w = rendered.shape[:2]
+        if w > 960:
+            scale    = 960 / w
+            rendered = cv2.resize(
+                rendered,
+                (960, int(h * scale)),
                 interpolation=cv2.INTER_LINEAR
             )
 
         ok, buf = cv2.imencode(
-            ".jpg", frame,
+            ".jpg", rendered,
             [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
         )
         if ok:
-            with _encoded_lock:
-                _encoded_buf = buf.tobytes()
+            with _buf_lock:
+                _buf = buf.tobytes()
 
 
-def _ensure_encoder():
-    global _encoder_started
-    if not _encoder_started:
-        t = threading.Thread(
+def _start_encoder():
+    global _enc_started
+    if not _enc_started:
+        threading.Thread(
             target=_encoder_thread,
             daemon=True,
             name="JPEGEncoder"
-        )
-        t.start()
-        _encoder_started = True
+        ).start()
+        _enc_started = True
 
 
 def mjpeg_generator():
-    """
-    MJPEG frame generator — just sends pre-encoded bytes.
-    Zero JPEG encoding on this path. Pure I/O only.
-    """
-    _ensure_encoder()
+    """Pure I/O — just sends pre-encoded bytes. Zero CPU here."""
+    _start_encoder()
     interval  = 1.0 / STREAM_FPS
     last_sent = 0
 
     while True:
         now  = time.time()
-        wait = interval - (now - last_sent)
-        if wait > 0:
-            time.sleep(wait)
+        gap  = interval - (now - last_sent)
+        if gap > 0:
+            time.sleep(gap)
 
-        with _encoded_lock:
-            buf = _encoded_buf
+        with _buf_lock:
+            buf = _buf
 
         if buf is None:
-            time.sleep(0.01)
+            time.sleep(0.005)
             continue
 
         last_sent = time.time()
