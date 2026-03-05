@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.py[cod]
+clips/
+logs/
+*.pt
+*.avi
+*.mp4
+.DS_Store
+venv/
+.venv/

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RIO // CLASSIFIED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --acid:     #b8ff00;
+  --acid-dim: rgba(184,255,0,0.07);
+  --acid-mid: rgba(184,255,0,0.25);
+  --red:      #ff1a1a;
+  --red-dim:  rgba(255,26,26,0.08);
+  --amber:    #ff9500;
+  --ink:      #04080a;
+  --ink2:     #080e10;
+  --ink3:     #0c1418;
+  --stripe:   rgba(184,255,0,0.025);
+  --font-vt:  'VT323', monospace;
+  --font-bb:  'Bebas Neue', sans-serif;
+  --font-ibm: 'IBM Plex Mono', monospace;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--ink);
+  color: var(--acid);
+  font-family: var(--font-ibm);
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 9000;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg, transparent 0px, transparent 3px,
+    rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 4px
+  );
+}
+
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 8999;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.75) 100%);
+}
+
+#grid-bg {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--stripe) 1px, transparent 1px),
+    linear-gradient(90deg, var(--stripe) 1px, transparent 1px);
+  background-size: 44px 44px;
+  animation: grid-scroll 25s linear infinite;
+}
+@keyframes grid-scroll { to { background-position: 44px 44px; } }
+
+/* ── APP SHELL ── */
+#app {
+  position: relative; width: 100vw; height: 100vh; z-index: 1;
+  display: grid; grid-template-rows: 44px 1fr 36px;
+}
+
+/* ══════════ TOP STRIP ══════════ */
+#top-strip {
+  position: relative; height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(184,255,0,0.1);
+  background: linear-gradient(180deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 100%);
+  z-index: 100; overflow: hidden;
+}
+
+.ticker-wrap {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; overflow: hidden; pointer-events: none;
+}
+.ticker {
+  display: flex; gap: 60px; white-space: nowrap;
+  animation: ticker-go 28s linear infinite;
+  font-family: var(--font-vt); font-size: .95rem;
+  color: rgba(184,255,0,0.12); letter-spacing: 3px;
+}
+@keyframes ticker-go { to { transform: translateX(-50%); } }
+
+.top-left {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: 14px;
+}
+
+.cls-stamp {
+  font-family: var(--font-bb); font-size: 1rem; letter-spacing: 4px;
+  color: var(--red); border: 1px solid var(--red); padding: 1px 8px;
+  transform: rotate(-1.5deg); position: relative;
+  box-shadow: 0 0 10px rgba(255,26,26,0.2);
+}
+.cls-stamp::before {
+  content: ''; position: absolute; inset: -3px;
+  border: 1px solid rgba(255,26,26,0.3);
+}
+
+.op-name {
+  font-family: var(--font-bb); font-size: 1.35rem; letter-spacing: 6px;
+  color: var(--acid); text-shadow: 0 0 18px var(--acid-mid);
+}
+.op-sub {
+  font-size: .48rem; letter-spacing: 3px; color: rgba(184,255,0,0.35);
+  font-family: var(--font-ibm); margin-top: -2px;
+}
+
+.top-right {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: 18px;
+}
+
+.intel-pair { text-align: right; }
+.intel-key  { font-size: .44rem; letter-spacing: 3px; color: rgba(184,255,0,0.28); }
+.intel-val  { font-family: var(--font-vt); font-size: 1.05rem; color: var(--acid); letter-spacing: 2px; line-height:1; }
+
+.threat-pill {
+  font-family: var(--font-bb); font-size: 1.5rem; letter-spacing: 3px;
+  padding: 1px 12px; border: 1px solid; transition: all .3s;
+}
+.tl-low    { color:var(--acid);  border-color:var(--acid);  text-shadow:0 0 12px var(--acid-mid); }
+.tl-medium { color:var(--amber); border-color:var(--amber); text-shadow:0 0 12px rgba(255,149,0,.4); }
+.tl-high   {
+  color:var(--red); border-color:var(--red); text-shadow:0 0 14px rgba(255,26,26,.6);
+  animation: thr-pulse .5s ease-in-out infinite alternate;
+}
+@keyframes thr-pulse {
+  from { box-shadow: 0 0 4px var(--red); }
+  to   { box-shadow: 0 0 22px var(--red), inset 0 0 8px rgba(255,26,26,.1); }
+}
+
+.live-sig {
+  font-family: var(--font-vt); font-size: 1.1rem;
+  color: var(--red); letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255,26,26,.6);
+  animation: live-blink 1.8s ease-in-out infinite;
+}
+@keyframes live-blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ══════════ STAGE ══════════ */
+#stage { position: relative; overflow: hidden; }
+
+#feed-container { position: absolute; inset: 0; background: #000; }
+#feed-container img { width:100%; height:100%; object-fit:cover; display:block; }
+#feed-container::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  box-shadow: inset 0 0 80px rgba(0,0,0,0.6); z-index:2;
+}
+
+/* Scanline sweep */
+#scan-line {
+  position: absolute; left:0; right:0; height:2px; z-index:5; pointer-events:none;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(184,255,0,.5) 20%, rgba(184,255,0,.85) 50%,
+    rgba(184,255,0,.5) 80%, transparent 100%);
+  box-shadow: 0 0 14px rgba(184,255,0,.25), 0 0 40px rgba(184,255,0,.08);
+  animation: scan-sweep 3.5s ease-in-out infinite;
+}
+@keyframes scan-sweep {
+  0%   { top:0%;   opacity:0; }
+  4%   { opacity:1; }
+  96%  { opacity:1; }
+  100% { top:100%; opacity:0; }
+}
+
+/* Thin crosshairs */
+.ch-h {
+  position:absolute; left:0; right:0; top:50%; height:1px; z-index:4; pointer-events:none;
+  background: linear-gradient(90deg, transparent, rgba(184,255,0,.1) 30%, rgba(184,255,0,.18) 50%, rgba(184,255,0,.1) 70%, transparent);
+}
+.ch-v {
+  position:absolute; top:0; bottom:0; left:50%; width:1px; z-index:4; pointer-events:none;
+  background: linear-gradient(180deg, transparent, rgba(184,255,0,.1) 30%, rgba(184,255,0,.18) 50%, rgba(184,255,0,.1) 70%, transparent);
+}
+
+/* SVG corner marks */
+.mark { position:absolute; z-index:10; pointer-events:none; }
+.mark-tl { top:16px; left:16px; }
+.mark-tr { top:16px; right:16px; }
+.mark-bl { bottom:16px; left:16px; }
+.mark-br { bottom:16px; right:16px; }
+
+/* ── LEFT GHOST PANEL ── */
+#left-panel {
+  position:absolute; left:0; top:0; bottom:0; width:200px; z-index:20;
+  display:flex; flex-direction:column; justify-content:center;
+  padding: 50px 0;
+  background: linear-gradient(90deg, rgba(0,0,0,0.82) 0%, transparent 100%);
+  pointer-events:none;
+}
+#left-panel::after {
+  content:''; position:absolute; top:15%; bottom:15%; right:0; width:1px;
+  background: linear-gradient(180deg, transparent, rgba(184,255,0,.25) 40%, rgba(184,255,0,.25) 60%, transparent);
+}
+
+.ps { padding: 10px 18px; border-bottom: 1px solid rgba(184,255,0,0.04); }
+.ps-k { font-size:.44rem; letter-spacing:4px; color:rgba(184,255,0,.28); text-transform:uppercase; margin-bottom:3px; }
+.ps-v { font-family:var(--font-vt); font-size:1.3rem; color:var(--acid); letter-spacing:2px; line-height:1; text-shadow:0 0 8px rgba(184,255,0,.2); }
+.ps-v.red    { color:var(--red);   text-shadow:0 0 8px rgba(255,26,26,.4); }
+.ps-v.amber  { color:var(--amber); }
+.ps-v.dim    { color:rgba(184,255,0,.45); }
+
+/* ── RIGHT GHOST PANEL ── */
+#right-panel {
+  position:absolute; right:0; top:0; bottom:0; width:230px; z-index:20;
+  display:flex; flex-direction:column; justify-content:center;
+  padding: 50px 0;
+  background: linear-gradient(270deg, rgba(0,0,0,0.82) 0%, transparent 100%);
+  pointer-events:none;
+}
+#right-panel::before {
+  content:''; position:absolute; top:15%; bottom:15%; left:0; width:1px;
+  background: linear-gradient(180deg, transparent, rgba(184,255,0,.25) 40%, rgba(184,255,0,.25) 60%, transparent);
+}
+
+.alert-feed { padding:8px 18px; overflow:hidden; max-height:220px; }
+.af-title { font-size:.44rem; letter-spacing:4px; color:rgba(184,255,0,.28); margin-bottom:8px; }
+
+.alert-item {
+  padding:6px 8px; margin-bottom:5px;
+  background:rgba(0,0,0,.65); border-left:2px solid var(--red);
+  animation: ai-in .35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes ai-in { from{opacity:0;transform:translateX(15px)} to{opacity:1;transform:translateX(0)} }
+
+.ai-time { font-size:.5rem; color:rgba(255,26,26,.45); letter-spacing:2px; }
+.ai-msg  { font-family:var(--font-vt); font-size:.95rem; color:var(--red); letter-spacing:1px; text-shadow:0 0 6px rgba(255,26,26,.35); }
+.ai-tags { display:flex; gap:3px; flex-wrap:wrap; margin-top:2px; }
+.atag    { font-size:.44rem; padding:1px 5px; letter-spacing:1px; border:1px solid; }
+.atag-m  { color:var(--red);   border-color:rgba(255,26,26,.35); }
+.atag-l  { color:var(--amber); border-color:rgba(255,149,0,.35); }
+
+/* ── CENTER THREAT LABEL ── */
+#threat-box {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:30; pointer-events:none; display:none;
+  flex-direction:column; align-items:center; gap:6px;
+}
+#threat-box.on { display:flex; }
+.tb-main {
+  font-family:var(--font-bb); font-size:2.8rem; letter-spacing:8px; color:var(--red);
+  text-shadow:0 0 30px rgba(255,26,26,.8), 0 0 70px rgba(255,26,26,.25);
+  animation: tb-fl 2.5s ease-in-out infinite;
+}
+@keyframes tb-fl {
+  0%,100%{opacity:1} 91%{opacity:1} 92%{opacity:.3} 93%{opacity:1} 96%{opacity:.5} 97%{opacity:1}
+}
+.tb-sub {
+  font-family:var(--font-ibm); font-size:.55rem; letter-spacing:4px;
+  color:rgba(255,26,26,.65); text-align:center;
+}
+
+/* ── NGROK FLOATING PILL ── */
+#ngrok-float {
+  position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+  z-index:40; display:none; align-items:center; gap:12px;
+  background:rgba(0,0,0,.88); border:1px solid rgba(184,255,0,.35);
+  padding:5px 16px; pointer-events:all;
+  box-shadow:0 0 18px rgba(184,255,0,.07);
+}
+#ngrok-float.on { display:flex; }
+.nf-label { font-size:.44rem; letter-spacing:3px; color:rgba(184,255,0,.3); }
+.nf-url   { font-family:var(--font-vt); font-size:.95rem; color:var(--acid); letter-spacing:1px; text-decoration:none; }
+.nf-copy  {
+  font-size:.44rem; letter-spacing:2px; color:rgba(184,255,0,.5);
+  border:1px solid rgba(184,255,0,.3); padding:2px 8px;
+  cursor:pointer; background:none; font-family:var(--font-ibm);
+  transition:all .2s;
+}
+.nf-copy:hover { background:var(--acid-dim); color:var(--acid); }
+
+/* ══════════ BOTTOM STRIP ══════════ */
+#bottom-strip {
+  position:relative; height:36px;
+  display:flex; align-items:center; padding:0 20px; gap:0;
+  border-top:1px solid rgba(184,255,0,0.08);
+  background:linear-gradient(0deg, rgba(0,0,0,.95) 0%, rgba(0,0,0,.4) 100%);
+  z-index:100;
+}
+.bb { display:flex; flex-direction:column; justify-content:center; padding:0 16px; border-right:1px solid rgba(184,255,0,.06); height:100%; }
+.bb:first-child { padding-left:0; }
+.bb-k  { font-size:.4rem; letter-spacing:3px; color:rgba(184,255,0,.22); }
+.bb-v  { font-family:var(--font-vt); font-size:.88rem; color:var(--acid); letter-spacing:2px; line-height:1; }
+.bb-bar { width:70px; height:2px; background:rgba(184,255,0,.08); border-radius:1px; margin-top:2px; overflow:hidden; }
+.bb-bar-fill { height:100%; background:var(--amber); box-shadow:0 0 4px var(--amber); transition:width .8s linear; }
+.bb-last { margin-left:auto; border:none; text-align:right; }
+
+/* ══════════ ALERT FLASH ══════════ */
+#alert-overlay {
+  position:fixed; inset:0; z-index:8000; pointer-events:none;
+  opacity:0; background:rgba(255,26,26,0.05);
+}
+#alert-overlay.flash { animation:af-seq .9s ease-out forwards; }
+@keyframes af-seq {
+  0%{opacity:1} 25%{opacity:0} 40%{opacity:.7} 55%{opacity:0} 70%{opacity:.3} 100%{opacity:0}
+}
+
+/* ══════════ BOOT SCREEN ══════════ */
+#boot-screen {
+  position:fixed; inset:0; z-index:10000; background:var(--ink);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  animation:boot-out .3s ease 3s forwards;
+}
+@keyframes boot-out { to{opacity:0;pointer-events:none} }
+
+.bl {
+  font-family:var(--font-vt); font-size:1.05rem; color:var(--acid);
+  letter-spacing:3px; opacity:0; text-shadow:0 0 8px var(--acid-mid);
+}
+.bl:nth-child(1){animation:bl-in .05s .15s forwards}
+.bl:nth-child(2){animation:bl-in .05s .35s forwards}
+.bl:nth-child(3){animation:bl-in .05s .55s forwards}
+.bl:nth-child(4){animation:bl-in .05s .75s forwards}
+.bl:nth-child(5){animation:bl-in .05s .95s forwards}
+.bl:nth-child(6){animation:bl-in .05s 1.15s forwards;color:var(--red)}
+.bl:nth-child(7){animation:bl-in .05s 1.35s forwards}
+.bl:nth-child(8){animation:bl-in .05s 1.55s forwards}
+@keyframes bl-in { to{opacity:1} }
+
+.boot-pb { width:280px; height:2px; background:rgba(184,255,0,.1); margin-top:14px; opacity:0; animation:bl-in .05s 1.7s forwards; }
+.boot-pb-fill { height:100%; background:var(--acid); box-shadow:0 0 6px var(--acid); animation:pb-go .8s ease 1.7s forwards; width:0; }
+@keyframes pb-go { to{width:100%} }
+</style>
+</head>
+<body>
+
+<div id="boot-screen">
+  <div class="bl">INITIALIZING RIO SURVEILLANCE ENGINE v4.2.1................</div>
+  <div class="bl">YOLOV8N NEURAL NET LOADED.................................OK</div>
+  <div class="bl">POSE ESTIMATION MODULE....................................OK</div>
+  <div class="bl">THREAT ASSESSMENT ENGINE..................................ARMED</div>
+  <div class="bl">VIDEO CAPTURE SOURCE 0....................................ACQUIRED</div>
+  <div class="bl">TELEGRAM UPLINK...........................................ACTIVE</div>
+  <div class="bl">NGROK SECURE TUNNEL.......................................STANDBY</div>
+  <div class="bl">OPERATION RIO // SURVEILLANCE ACTIVE // EYES ON</div>
+  <div class="boot-pb"><div class="boot-pb-fill"></div></div>
+</div>
+
+<div id="alert-overlay"></div>
+<div id="grid-bg"></div>
+
+<div id="app">
+
+  <!-- ══ TOP ══ -->
+  <div id="top-strip">
+    <div class="ticker-wrap">
+      <div class="ticker">
+        OPERATION RIO &nbsp;·&nbsp; SURVEILLANCE ACTIVE &nbsp;·&nbsp; THREAT ASSESSMENT ARMED &nbsp;·&nbsp; NEURAL ENGINE ONLINE &nbsp;·&nbsp; YOLOV8 LOADED &nbsp;·&nbsp; POSE DETECTION ACTIVE &nbsp;·&nbsp; UPLINK SECURE &nbsp;·&nbsp; PRIVACY PROTOCOL: SDP &nbsp;·&nbsp; LOITER DETECTION: 3s &nbsp;·&nbsp;
+        OPERATION RIO &nbsp;·&nbsp; SURVEILLANCE ACTIVE &nbsp;·&nbsp; THREAT ASSESSMENT ARMED &nbsp;·&nbsp; NEURAL ENGINE ONLINE &nbsp;·&nbsp; YOLOV8 LOADED &nbsp;·&nbsp; POSE DETECTION ACTIVE &nbsp;·&nbsp; UPLINK SECURE &nbsp;·&nbsp; PRIVACY PROTOCOL: SDP &nbsp;·&nbsp; LOITER DETECTION: 3s &nbsp;·&nbsp;
+      </div>
+    </div>
+    <div class="top-left">
+      <div class="cls-stamp">CLASSIFIED</div>
+      <div>
+        <div class="op-name">PROJECT RIO</div>
+        <div class="op-sub">AI-DRIVEN VISUAL THREAT INTELLIGENCE SYSTEM</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="intel-pair">
+        <div class="intel-key">LOCAL TIME</div>
+        <div class="intel-val" id="clock-top">00:00:00</div>
+      </div>
+      <div class="intel-pair">
+        <div class="intel-key">THREAT LEVEL</div>
+        <div id="threat-pill" class="threat-pill tl-low">CLEAR</div>
+      </div>
+      <div class="live-sig">● REC</div>
+    </div>
+  </div>
+
+  <!-- ══ STAGE ══ -->
+  <div id="stage">
+    <div id="feed-container">
+      <img src="/stream" alt="FEED">
+    </div>
+
+    <div id="scan-line"></div>
+    <div class="ch-h"></div>
+    <div class="ch-v"></div>
+
+    <!-- corner marks -->
+    <div class="mark mark-tl"><svg width="28" height="28" fill="none"><path d="M0 28L0 0 28 0" stroke="rgba(184,255,0,.55)" stroke-width="1.5"/><circle cx="0" cy="0" r="3" fill="rgba(184,255,0,.4)"/></svg></div>
+    <div class="mark mark-tr"><svg width="28" height="28" fill="none"><path d="M28 28L28 0 0 0" stroke="rgba(184,255,0,.55)" stroke-width="1.5"/><circle cx="28" cy="0" r="3" fill="rgba(184,255,0,.4)"/></svg></div>
+    <div class="mark mark-bl"><svg width="28" height="28" fill="none"><path d="M0 0L0 28 28 28" stroke="rgba(184,255,0,.55)" stroke-width="1.5"/><circle cx="0" cy="28" r="3" fill="rgba(184,255,0,.4)"/></svg></div>
+    <div class="mark mark-br"><svg width="28" height="28" fill="none"><path d="M28 0L28 28 0 28" stroke="rgba(184,255,0,.55)" stroke-width="1.5"/><circle cx="28" cy="28" r="3" fill="rgba(184,255,0,.4)"/></svg></div>
+
+    <!-- LEFT PANEL -->
+    <div id="left-panel">
+      <div class="ps"><div class="ps-k">MODE</div><div class="ps-v dim" id="lp-mode">MONITOR</div></div>
+      <div class="ps"><div class="ps-k">FRAME RATE</div><div class="ps-v" id="lp-fps">5 FPS</div></div>
+      <div class="ps"><div class="ps-k">FRAMES PROC</div><div class="ps-v" id="lp-frames">0</div></div>
+      <div class="ps"><div class="ps-k">TOTAL ALERTS</div><div class="ps-v red" id="lp-alerts">0</div></div>
+      <div class="ps"><div class="ps-k">PRIVACY SDP</div><div class="ps-v dim" id="lp-sdp">IDLE</div></div>
+      <div class="ps" id="lp-cd-wrap" style="display:none"><div class="ps-k">INTEL BUFFER</div><div class="ps-v amber" id="lp-cd">60s</div></div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="right-panel">
+      <div class="ps" style="padding-left:28px">
+        <div class="ps-k">ACTIVE TARGETS</div>
+        <div class="ps-v red" id="rp-count">NONE</div>
+      </div>
+      <div class="alert-feed">
+        <div class="af-title">RECENT EVENTS</div>
+        <div id="alert-feed-inner"></div>
+      </div>
+    </div>
+
+    <!-- CENTER THREAT -->
+    <div id="threat-box">
+      <div class="tb-main">⚠ THREAT DETECTED</div>
+      <div class="tb-sub" id="threat-detail">HIGH CONFIDENCE · LOITERING DETECTED</div>
+    </div>
+
+    <!-- NGROK PILL -->
+    <div id="ngrok-float">
+      <div><div class="nf-label">REMOTE ACCESS</div><a id="ngrok-url" class="nf-url" href="#" target="_blank">—</a></div>
+      <button class="nf-copy" onclick="copyNgrok()">COPY</button>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM ══ -->
+  <div id="bottom-strip">
+    <div class="bb"><div class="bb-k">ENGINE</div><div class="bb-v">YOLOV8N+POSE</div></div>
+    <div class="bb"><div class="bb-k">FPS MODE</div><div class="bb-v" id="bs-mode">MONITOR</div></div>
+    <div class="bb"><div class="bb-k">CONFIDENCE</div><div class="bb-v">50%</div></div>
+    <div class="bb"><div class="bb-k">LOITER THRESH</div><div class="bb-v">3s</div></div>
+    <div class="bb"><div class="bb-k">COOLDOWN</div><div class="bb-v" id="bs-cd">READY</div><div class="bb-bar"><div class="bb-bar-fill" id="bs-cd-bar" style="width:0%"></div></div></div>
+    <div class="bb"><div class="bb-k">SOURCE</div><div class="bb-v">CAM-0</div></div>
+    <div class="bb bb-last"><div class="bb-k">UPLINK</div><div class="bb-v" id="bs-uplink">LOCAL</div></div>
+  </div>
+
+</div>
+
+<script>
+const COOLDOWN_MAX = 60;
+let prevAlerts = 0;
+
+// Clock
+function tick() { document.getElementById('clock-top').textContent = new Date().toTimeString().slice(0,8); }
+setInterval(tick, 1000); tick();
+
+// Copy ngrok
+function copyNgrok() {
+  navigator.clipboard.writeText(document.getElementById('ngrok-url').href).then(() => {
+    const b = document.querySelector('.nf-copy');
+    b.textContent = 'COPIED'; setTimeout(() => b.textContent = 'COPY', 2000);
+  });
+}
+
+// Alert flash
+function flash() {
+  const el = document.getElementById('alert-overlay');
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+// Threat box
+function updateThreatBox(threats) {
+  const box = document.getElementById('threat-box');
+  // Only show THREAT DETECTED for unknown/dangerous persons, not known faces
+  const dangerous = threats ? threats.filter(t => 
+    t.threat === 'RED' || t.threat === 'HIGH' || t.threat === 'YELLOW'
+  ) : [];
+  if (dangerous.length) {
+    const t = dangerous[0];
+    const parts = [];
+    if (t.masked)    parts.push('MASKED SUBJECT');
+    if (t.loitering) parts.push('LOITERING ' + t.loiter_seconds + 's');
+    document.getElementById('threat-detail').textContent = parts.join(' · ') || 'HIGH CONFIDENCE';
+    box.classList.add('on');
+  } else { 
+    box.classList.remove('on'); 
+  }
+}
+// Status
+async function refreshStatus() {
+  try {
+    const s = await fetch('/api/status').then(r => r.json());
+
+    document.getElementById('lp-mode').textContent   = s.fps_mode;
+    document.getElementById('lp-fps').textContent    = s.current_fps + ' FPS';
+    document.getElementById('lp-frames').textContent = s.total_frames.toLocaleString();
+    document.getElementById('lp-alerts').textContent = s.total_alerts;
+    document.getElementById('lp-sdp').textContent    = s.sdp_active ? 'ACTIVE' : 'IDLE';
+    document.getElementById('bs-mode').textContent   = s.fps_mode;
+
+    if (s.alert_cooldown && s.cooldown_secs > 0) {
+      document.getElementById('lp-cd-wrap').style.display = 'block';
+      document.getElementById('lp-cd').textContent        = s.cooldown_secs + 's';
+      document.getElementById('bs-cd').textContent        = s.cooldown_secs + 's';
+      document.getElementById('bs-cd-bar').style.width    = (s.cooldown_secs / COOLDOWN_MAX * 100) + '%';
+    } else {
+      document.getElementById('lp-cd-wrap').style.display = 'none';
+      document.getElementById('bs-cd').textContent        = 'READY';
+      document.getElementById('bs-cd-bar').style.width    = '0%';
+    }
+
+    const pill = document.getElementById('threat-pill');
+    const rc   = document.getElementById('rp-count');
+    const dangerous = (s.active_threats || []).filter(t =>
+      t.threat === 'RED' || t.threat === 'HIGH' || t.threat === 'YELLOW'
+    );
+    if (dangerous.length) {
+      pill.textContent = dangerous[0].threat;
+      pill.className   = 'threat-pill tl-' + dangerous[0].threat.toLowerCase();
+      rc.textContent   = dangerous.length + ' TARGET' + (dangerous.length > 1 ? 'S' : '');
+      rc.className     = 'ps-v red';
+    } else {
+      pill.textContent = 'CLEAR'; pill.className = 'threat-pill tl-low';
+      rc.textContent   = 'NONE';  rc.className   = 'ps-v red';
+    }
+    updateThreatBox(s.active_threats);
+
+    if (s.total_alerts > prevAlerts) { flash(); prevAlerts = s.total_alerts; }
+
+    if (s.public_url) {
+      document.getElementById('ngrok-float').classList.add('on');
+      const a = document.getElementById('ngrok-url');
+      a.href = s.public_url; a.textContent = s.public_url.replace('https://','');
+      document.getElementById('bs-uplink').textContent = 'TUNNEL ACTIVE';
+    }
+  } catch(e){}
+}
+
+// Events
+async function refreshEvents() {
+  try {
+    const events = await fetch('/api/events').then(r => r.json());
+    const feed = document.getElementById('alert-feed-inner');
+    if (!events.length) {
+      feed.innerHTML = '<div style="font-size:.5rem;letter-spacing:2px;color:rgba(184,255,0,.18);font-family:var(--font-ibm)">NO EVENTS LOGGED</div>';
+      return;
+    }
+    feed.innerHTML = events.slice(0,4).map(e => `
+      <div class="alert-item">
+        <div class="ai-time">${e.date} ${e.timestamp}</div>
+        <div class="ai-msg">${e.threat} THREAT</div>
+        <div class="ai-tags">
+          ${e.info.masked    ? '<span class="atag atag-m">MASKED</span>' : ''}
+          ${e.info.loitering ? '<span class="atag atag-l">LOITER '+e.info.loiter_seconds+'s</span>' : ''}
+        </div>
+      </div>`).join('');
+  } catch(e){}
+}
+
+setInterval(refreshStatus, 800);
+setInterval(refreshEvents, 2000);
+refreshStatus(); refreshEvents();
+</script>
+</body>
+</html>
